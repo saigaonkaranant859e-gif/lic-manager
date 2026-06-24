@@ -196,7 +196,7 @@ textarea{resize:vertical;min-height:65px}
     </div>
     <div class="tb-right">
       <div class="search-wrap">
-        <input type="text" id="search-box" placeholder="Naam, mobile, policy no. likhein..." oninput="onSearch(this.value)">
+        <input type="text" id="search-box" placeholder="Is section me search (naam/mobile/policy no.)..." oninput="onSearch(this.value)">
       </div>
       <button class="btn btn-a" onclick="openAddClient()">+ Naya Client</button>
       <button class="btn btn-p" onclick="openAddPolicy()">+ Naya Policy</button>
@@ -851,6 +851,7 @@ const PLANS = {
 let SIDX = []; // {id, str, c}
 let PIDX = {}; // clientId -> count
 let curQ = '';
+let secQ = ''; // section-local search query (Due/Maturity/SB/Claims/FUP/Quotation)
 let clPage = 1, polPage = 1;
 const PER = 50;
 let curFupId = null;
@@ -889,6 +890,8 @@ function goPage(pg, el) {
   // Clear search box when navigating (except when on search result pages)
   const searchBox = document.getElementById('search-box');
   if(searchBox) { searchBox.value = ''; curQ = ''; }
+  secQ = '';
+  ['due-search','quot-search'].forEach(idn=>{ const e=document.getElementById(idn); if(e) e.value=''; });
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
   document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
   const pgEl = document.getElementById('page-'+pg);
@@ -926,9 +929,21 @@ let searchTimer;
 function onSearch(q) {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(()=>{
-    // Go to clients page only if not already on clients/policies page
     const active = document.querySelector('.page.on');
-    if(q.trim() && active && active.id !== 'page-clients' && active.id !== 'page-policies') {
+    const id = active ? active.id : '';
+    const qq = q.trim();
+    secQ = qq.toLowerCase();
+
+    // Section-local search: filter WITHIN the current section and stay there
+    if(id === 'page-due')      { const el=document.getElementById('due-search'); if(el) el.value=qq; renderDue(); return; }
+    if(id === 'page-quotation'){ const el=document.getElementById('quot-search'); if(el) el.value=qq; filterQuots(qq); return; }
+    if(id === 'page-maturity') { renderMaturity(); return; }
+    if(id === 'page-sb')       { renderSB(); return; }
+    if(id === 'page-claims')   { renderClaims(); return; }
+    if(id === 'page-fup')      { renderFup(); return; }
+
+    // Default: client/policy search (dashboard, welcome, clients, policies) -> show on Client List
+    if(qq && id !== 'page-clients' && id !== 'page-policies') {
       document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
       document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
       document.getElementById('page-clients').classList.add('on');
@@ -937,6 +952,16 @@ function onSearch(q) {
     }
     doSearch(q);
   }, 200);
+}
+
+// True if a policy (and its client) matches the section search query
+function secMatch(p, q) {
+  if(!q) return true;
+  const c = gClient(p.clientId);
+  const nm = (c ? (c.name||'') : '').toLowerCase();
+  const pn = (p.polno||'').toLowerCase();
+  const mo = (c ? (c.mobile||'') : '').toLowerCase();
+  return nm.includes(q) || pn.includes(q) || mo.includes(q);
 }
 
 function doSearch(q) {
@@ -1257,7 +1282,7 @@ function printDue(){
 // ============ FUP TRACKER ============
 function renderFup() {
   const today=new Date();
-  const list=DB.policies.filter(p=>p.fup&&p.status==='I').sort((a,b)=>new Date(a.fup)-new Date(b.fup));
+  const list=DB.policies.filter(p=>p.fup&&p.status==='I'&&secMatch(p,secQ)).sort((a,b)=>new Date(a.fup)-new Date(b.fup));
   if(!list.length){document.getElementById('fup-content').innerHTML=`<div class="empty"><div class="ei">✅</div><h3>Koi FUP pending nahi</h3></div>`;return;}
   document.getElementById('fup-content').innerHTML=list.map(p=>{
     const c=gClient(p.clientId);
@@ -1747,6 +1772,7 @@ function renderMaturity() {
     if(isNaN(d)) return false;
     if(d.getFullYear() !== yr) return false;
     if(mo !== 'ALL' && (d.getMonth()+1) !== parseInt(mo)) return false;
+    if(!secMatch(p, secQ)) return false;
     return true;
   }).sort((a,b) => new Date(a.maturity)-new Date(b.maturity));
 
@@ -2195,6 +2221,7 @@ function renderSB() {
   const sbList = [];
   DB.policies.forEach(p => {
     if(p.status !== 'I') return;
+    if(!secMatch(p, secQ)) return;
     const sbPlan = SB_PLANS[String(p.plan)];
     if(!sbPlan || !p.doc) return;
     if(!sbPlan.intervals || !sbPlan.intervals.length) return;
@@ -2234,7 +2261,7 @@ function renderSB() {
       <td><strong>${c?`${c.prefix||''} ${c.name}`:'-'}</strong></td>
       <td style="font-weight:600;color:var(--pri)">${c?calcAge(c.dob):'-'}</td>
       <td>${p.polno}</td>
-      <td style="font-size:.76rem">${p.plan} / ${p.planName(p)}</td>
+      <td style="font-size:.76rem">${p.plan} / ${planName(p)}</td>
       <td>₹${parseFloat(p.sa||0).toLocaleString('en-IN')}</td>
       <td style="font-weight:700;color:var(--ok)">₹${p.sbAmt.toLocaleString('en-IN')}<div style="font-size:.68rem;color:var(--muted)">${p.sbYr}yr pe SB</div></td>
       <td>${fmtD(p.sbDate)}</td>
@@ -2435,8 +2462,11 @@ function viewQuotation(id) {
               </div>`:'';
             }).join('')}
           </div>
+          ${parseInt(p.premYly||0)>0?`<div style="background:#fff3e0;border:1px solid #ffcc80;border-radius:6px;padding:6px 10px;margin-bottom:8px;font-size:.72rem;color:#6d4c41">
+            <strong>GST note:</strong> Upar dikhaye premium GST ke bina (tabular) hain. 1st year yearly ≈ ₹${Math.round(parseInt(p.premYly)*1.045).toLocaleString('en-IN')} (incl 4.5% GST), renewal ≈ ₹${Math.round(parseInt(p.premYly)*1.0225).toLocaleString('en-IN')} (incl 2.25% GST).
+          </div>`:''}
           <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;font-size:.8rem">
-            ${p.bonus&&p.bonus!='0'?`<div><span style="color:var(--muted)">Bonus Rate:</span> <strong>${p.bonus}</strong></div>`:''}
+            ${(p.bonusRate||p.bonus)&&(p.bonusRate||p.bonus)!='0'?`<div><span style="color:var(--muted)">Bonus Rate:</span> <strong>₹${p.bonusRate||p.bonus}/1000 SA</strong></div>`:''}
             ${p.accident&&p.accident!='0'?`<div><span style="color:var(--muted)">Accident:</span> <strong>₹${parseInt(p.accident).toLocaleString('en-IN')}</strong></div>`:''}
             ${p.termRider&&p.termRider!='0'?`<div><span style="color:var(--muted)">Term Rider:</span> <strong>₹${parseInt(p.termRider).toLocaleString('en-IN')}</strong></div>`:''}
             ${p.ci&&p.ci!='0'?`<div><span style="color:var(--muted)">CI:</span> <strong>₹${parseInt(p.ci).toLocaleString('en-IN')}</strong></div>`:''}
@@ -2517,11 +2547,12 @@ function printQuotation(id, qObj) {
   // Plan features by type
   function getPlanFeatures(p) {
     const plan = p.plan||'';
+    const pdb = (typeof PLAN_DB !== 'undefined') ? PLAN_DB[plan] : null;
     const features = [];
     // Death benefit
-    features.push('Death Benefit: Sum Assured + Bonuses');
+    features.push('Death Benefit: ' + (pdb && pdb.deathBenefit ? pdb.deathBenefit : 'Sum Assured + Bonuses'));
     // Maturity
-    if(parseInt(p.maturity||0)>0) features.push(`Maturity: ₹${parseInt(p.maturity).toLocaleString('en-IN')} (SA + Bonus)`);
+    if(parseInt(p.maturity||0)>0) features.push(`Maturity: ₹${parseInt(p.maturity).toLocaleString('en-IN')} (${pdb && pdb.maturityFormula ? pdb.maturityFormula : 'SA + Bonus'})`);
     // Riders
     if(parseInt(p.accident||0)>0) features.push(`Accident Benefit: ₹${parseInt(p.accident).toLocaleString('en-IN')}`);
     if(parseInt(p.termRider||0)>0) features.push(`Term Rider: ₹${parseInt(p.termRider).toLocaleString('en-IN')}`);
@@ -2988,6 +3019,10 @@ function renderClaims() {
   const filter = document.getElementById('claims-filter')?.value || 'ALL';
   let data = window.EXTRA.maturityClaims;
   if(filter !== 'ALL') data = data.filter(c => c.type === filter);
+  if(secQ) data = data.filter(c => {
+    const nm = (c.clientName || (DB.clients.find(cl=>String(cl.id)===String(c.clientId))?.name) || '').toLowerCase();
+    return (c.polno||'').toLowerCase().includes(secQ) || nm.includes(secQ);
+  });
 
   const total = data.reduce((s,c) => s+(parseFloat(c.amount)||0), 0);
   const paid = data.filter(c => c.paid === '1' || c.cheque);
@@ -3284,6 +3319,7 @@ function printNQPreview() {
       premQly: String(Math.round(premY/4)),
       premMly: String(Math.round(premY/12)),
       maturity: String(matamt),
+      bonus: String(bonus),
       bonusRate: String(bonus),
       accident: String(ab||0),
       termRider: String(tr2||0),
