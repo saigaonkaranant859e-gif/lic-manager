@@ -565,9 +565,9 @@ textarea{resize:vertical;min-height:65px}
               <div class="fg"><label>Yearly Premium (₹)</label><input type="number" id="nq-premy" placeholder="Auto calc" oninput="this.dataset.auto='0'"></div>
               <div class="fg"><label>Maturity Amount (₹)</label><input type="number" id="nq-matamt" placeholder="Estimated"></div>
               <div class="fg"><label>Bonus Rate (per 1000 SA)</label><input type="number" id="nq-bonus" placeholder="e.g. 48" oninput="calcNQMaturity()"></div>
-              <div class="fg"><label>Accident Benefit (₹)</label><input type="number" id="nq-ab"></div>
-              <div class="fg"><label>Term Rider (₹)</label><input type="number" id="nq-tr"></div>
-              <div class="fg"><label>Critical Illness (₹)</label><input type="number" id="nq-ci"></div>
+              <div class="fg"><label>Accident Benefit (₹)</label><input type="number" id="nq-ab" placeholder="SA e.g. 500000" oninput="calcNQMaturity()"></div>
+              <div class="fg"><label>Term Rider (₹)</label><input type="number" id="nq-tr" placeholder="SA e.g. 500000" oninput="calcNQMaturity()"></div>
+              <div class="fg"><label>Critical Illness (₹)</label><input type="number" id="nq-ci" placeholder="SA e.g. 300000" oninput="calcNQMaturity()"></div>
             </div>
             <div style="display:flex;gap:8px">
               <button class="btn btn-p" onclick="generateNQPreview()" style="flex:1">👁 Preview Banao</button>
@@ -2465,11 +2465,15 @@ function viewQuotation(id) {
           ${parseInt(p.premYly||0)>0?`<div style="background:#fff3e0;border:1px solid #ffcc80;border-radius:6px;padding:6px 10px;margin-bottom:8px;font-size:.72rem;color:#6d4c41">
             <strong>GST note:</strong> Upar dikhaye premium GST ke bina (tabular) hain. 1st year yearly ≈ ₹${Math.round(parseInt(p.premYly)*1.045).toLocaleString('en-IN')} (incl 4.5% GST), renewal ≈ ₹${Math.round(parseInt(p.premYly)*1.0225).toLocaleString('en-IN')} (incl 2.25% GST).
           </div>`:''}
+          ${p.totalPremYly&&parseInt(p.totalPremYly)>parseInt(p.premYly||0)?`<div style="background:#e8f5e9;border:1.5px solid #66bb6a;border-radius:6px;padding:8px 12px;margin-bottom:8px;text-align:center">
+            <span style="font-size:.7rem;color:#555;text-transform:uppercase;letter-spacing:.5px">Total Yearly Premium (riders ke saath)</span>
+            <div style="font-weight:800;font-size:16px;color:#1b5e20">₹${parseInt(p.totalPremYly).toLocaleString('en-IN')} <span style="font-size:.65rem;font-weight:500;color:#555">/ year (ex-GST)</span></div>
+          </div>`:''}
           <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;font-size:.8rem">
             ${(p.bonusRate||p.bonus)&&(p.bonusRate||p.bonus)!='0'?`<div><span style="color:var(--muted)">Bonus Rate:</span> <strong>₹${p.bonusRate||p.bonus}/1000 SA</strong></div>`:''}
-            ${p.accident&&p.accident!='0'?`<div><span style="color:var(--muted)">Accident:</span> <strong>₹${parseInt(p.accident).toLocaleString('en-IN')}</strong></div>`:''}
-            ${p.termRider&&p.termRider!='0'?`<div><span style="color:var(--muted)">Term Rider:</span> <strong>₹${parseInt(p.termRider).toLocaleString('en-IN')}</strong></div>`:''}
-            ${p.ci&&p.ci!='0'?`<div><span style="color:var(--muted)">CI:</span> <strong>₹${parseInt(p.ci).toLocaleString('en-IN')}</strong></div>`:''}
+            ${p.accident&&p.accident!='0'?`<div><span style="color:var(--muted)">Accident SA:</span> <strong>₹${parseInt(p.accident).toLocaleString('en-IN')}</strong>${p.abPrem&&p.abPrem!='0'?` <span style="color:#888">(₹${parseInt(p.abPrem).toLocaleString('en-IN')}/yr)</span>`:''}</div>`:''}
+            ${p.termRider&&p.termRider!='0'?`<div><span style="color:var(--muted)">Term Rider SA:</span> <strong>₹${parseInt(p.termRider).toLocaleString('en-IN')}</strong>${p.trPrem&&p.trPrem!='0'?` <span style="color:#888">(₹${parseInt(p.trPrem).toLocaleString('en-IN')}/yr)</span>`:''}</div>`:''}
+            ${p.ci&&p.ci!='0'?`<div><span style="color:var(--muted)">Critical Illness SA:</span> <strong>₹${parseInt(p.ci).toLocaleString('en-IN')}</strong>${p.ciPrem&&p.ciPrem!='0'?` <span style="color:#888">(₹${parseInt(p.ciPrem).toLocaleString('en-IN')}/yr)</span>`:''}</div>`:''}
             ${p.annuity&&p.annuity!='0'?`<div><span style="color:var(--muted)">Annuity:</span> <strong>₹${parseInt(p.annuity).toLocaleString('en-IN')}</strong></div>`:''}
             ${p.installmentAmt&&p.installmentAmt!='0'?`<div><span style="color:var(--muted)">Installment:</span> <strong>₹${parseInt(p.installmentAmt).toLocaleString('en-IN')}</strong></div>`:''}
           </div>
@@ -3054,6 +3058,21 @@ function renderClaims() {
 function initNewQuot() {
   document.getElementById('nq-date').value = new Date().toISOString().split('T')[0];
   document.getElementById('nq-preview').innerHTML = '<div class="empty"><div class="ei">📝</div><h3>Details bhar ke Preview click karo</h3></div>';
+  // Reset form fields so each new quotation starts clean (and auto-premium works fresh)
+  ['nq-name','nq-dob','nq-age','nq-tax','nq-plan','nq-planname','nq-sa','nq-term','nq-ppt','nq-premy','nq-matamt','nq-bonus','nq-ab','nq-tr','nq-ci','nq-search'].forEach(function(idn){
+    var e = document.getElementById(idn);
+    if(e) e.value = '';
+  });
+  var premEl = document.getElementById('nq-premy');
+  if(premEl) premEl.dataset.auto = '1';
+  var srch = document.getElementById('nq-search');
+  if(srch) srch.dataset.clientId = '';
+  var bd = document.getElementById('nq-bonus-breakdown');
+  if(bd) bd.innerHTML = '';
+  var pinfo = document.getElementById('nq-plan-info');
+  if(pinfo) pinfo.innerHTML = '';
+  var saEl = document.getElementById('nq-sa');
+  if(saEl) saEl.placeholder = '500000';
   // Show old quotations
   renderOldQuotsList(window.EXTRA.quotations);
 }
@@ -3074,6 +3093,12 @@ function autoFillNQPlan(val) {
       document.getElementById('nq-planname').parentElement.after(infoDiv);
     }
     infoDiv.innerHTML = '<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:6px;padding:8px;margin:6px 0;font-size:.78rem">' + info + '</div>';
+    // Sum Assured field: show plan minimum (placeholder + prefill if empty)
+    var saEl = document.getElementById('nq-sa');
+    if(saEl) {
+      saEl.placeholder = 'Min ₹' + p.minSA.toLocaleString('en-IN');
+      if(!saEl.value) saEl.value = p.minSA;
+    }
     calcNQMaturity();
     return;
   }
@@ -3110,14 +3135,21 @@ function calcNQMaturity() {
     if(pptEl) pptEl.value = p.getPPT(term) || '';
     var ppt = p.getPPT(term) || term;
 
-    // Auto premium calculation (2025-26 rates) — needs age
+    // Auto premium calculation (2025-26 rates)
     var autoPrem = computeAutoPremium(planNo, sa, term, age);
     var premEl = document.getElementById('nq-premy');
-    if(autoPrem > 0 && premEl && (!premEl.value || premEl.dataset.auto === '1')) {
+    if(autoPrem > 0 && premEl && (!premEl.value || premEl.dataset.auto !== '0')) {
       premEl.value = autoPrem;
       premEl.dataset.auto = '1';
     }
-    var premY = parseFloat(premEl.value) || autoPrem || 0;
+    var premBase = parseFloat(premEl.value) || autoPrem || 0;
+
+    // Rider premiums — adding Accident / Term Rider / Critical Illness increases total premium
+    var abSA = parseFloat(document.getElementById('nq-ab').value) || 0;
+    var trSA = parseFloat(document.getElementById('nq-tr').value) || 0;
+    var ciSA = parseFloat(document.getElementById('nq-ci').value) || 0;
+    var rid = computeRiderPremiums(age, abSA, trSA, ciSA);
+    var totalPrem = premBase + rid.total;
 
     // Show breakdown
     var bdDiv = document.getElementById('nq-bonus-breakdown');
@@ -3126,14 +3158,24 @@ function calcNQMaturity() {
       bdDiv.id = 'nq-bonus-breakdown';
       document.getElementById('nq-matamt').parentElement.after(bdDiv);
     }
+    var ridHtml = '';
+    if(rid.total > 0) {
+      ridHtml = '<div style="margin-top:6px;padding-top:6px;border-top:1px dashed #c5cae9">'
+        + 'Plan Premium: ₹' + premBase.toLocaleString('en-IN') + '<br>'
+        + (rid.abP>0 ? '+ Accident Benefit Rider: ₹' + rid.abP.toLocaleString('en-IN') + '/yr<br>' : '')
+        + (rid.trP>0 ? '+ Term Rider: ₹' + rid.trP.toLocaleString('en-IN') + '/yr<br>' : '')
+        + (rid.ciP>0 ? '+ Critical Illness Rider: ₹' + rid.ciP.toLocaleString('en-IN') + '/yr<br>' : '')
+        + '<strong style="color:#1b5e20">Total Yearly Premium (with riders): ₹' + totalPrem.toLocaleString('en-IN') + '</strong> (ex-GST)</div>';
+    }
     bdDiv.innerHTML = '<div style="background:#f0f4ff;border:1.5px solid #c5cae9;border-radius:8px;padding:10px;margin:8px 0;font-size:.78rem">'
       + '<strong style="color:var(--pri)">Auto Calculation (2025-26):</strong><br>'
-      + (autoPrem>0 ? 'Est. Yearly Premium: <strong>₹' + autoPrem.toLocaleString('en-IN') + '</strong> (ex-GST) | PPT: ' + ppt + ' yr<br>' : '<span style="color:#c62828">Age daalo to premium auto-calc hoga.</span><br>')
+      + (autoPrem>0 ? 'Plan Yearly Premium: <strong>₹' + premBase.toLocaleString('en-IN') + '</strong> (ex-GST) | PPT: ' + ppt + ' yr<br>' : '<span style="color:#c62828">Premium auto-calc sirf Table 733/736 ke liye hai.</span><br>')
       + 'SRB Rate: ₹' + srbRate + '/1000 SA &nbsp; Total SRB: ₹' + totalSRB.toLocaleString('en-IN') + '<br>'
       + 'FAB Rate: ₹' + fabRate + '/1000 SA &nbsp; FAB: ₹' + fabAmt.toLocaleString('en-IN') + '<br>'
       + (matSAFactor !== 1.0 ? 'Maturity SA: ₹' + matSA.toLocaleString('en-IN') + ' (' + Math.round(matSAFactor*100) + '% of Basic SA)<br>' : '')
-      + '<strong>Estimated Maturity: ₹' + maturity.toLocaleString('en-IN') + '</strong> (' + p.maturityFormula + ')<br>'
-      + '<span style="color:#666">Death Benefit: ' + p.deathBenefit + '</span>'
+      + '<strong>Estimated Maturity: ₹' + maturity.toLocaleString('en-IN') + '</strong> (' + p.maturityFormula + ')'
+      + ridHtml
+      + '<br><span style="color:#666">Death Benefit: ' + p.deathBenefit + '</span>'
       + '</div>';
     return;
   }
@@ -3169,6 +3211,8 @@ function generateNQPreview() {
   const premH = Math.round(premY / 2);
   const premQ = Math.round(premY / 4);
   const premM = Math.round(premY / 12);
+  const rid = computeRiderPremiums(age, ab, tr2, ci);
+  const totalPremY = premY + rid.total;
 
   document.getElementById('nq-preview').innerHTML = `
     <div style="background:linear-gradient(135deg,#003087,#1a237e);color:#fff;border-radius:8px;padding:16px;margin-bottom:12px">
@@ -3200,9 +3244,10 @@ function generateNQPreview() {
               <div style="font-weight:700">₹${v.toLocaleString('en-IN')}</div>
             </div>`).join('')}
         </div>
-        ${ab?`<div style="margin-top:10px;font-size:.8rem;color:var(--muted)">+ Accident Benefit: <strong>₹${ab.toLocaleString('en-IN')}</strong></div>`:''}
-        ${tr2?`<div style="font-size:.8rem;color:var(--muted)">+ Term Rider: <strong>₹${tr2.toLocaleString('en-IN')}</strong></div>`:''}
-        ${ci?`<div style="font-size:.8rem;color:var(--muted)">+ Critical Illness: <strong>₹${ci.toLocaleString('en-IN')}</strong></div>`:''}
+        ${ab?`<div style="margin-top:10px;font-size:.8rem;color:var(--muted)">+ Accident Benefit SA: <strong>₹${ab.toLocaleString('en-IN')}</strong> <span style="color:#888">(₹${rid.abP.toLocaleString('en-IN')}/yr)</span></div>`:''}
+        ${tr2?`<div style="font-size:.8rem;color:var(--muted)">+ Term Rider SA: <strong>₹${tr2.toLocaleString('en-IN')}</strong> <span style="color:#888">(₹${rid.trP.toLocaleString('en-IN')}/yr)</span></div>`:''}
+        ${ci?`<div style="font-size:.8rem;color:var(--muted)">+ Critical Illness SA: <strong>₹${ci.toLocaleString('en-IN')}</strong> <span style="color:#888">(₹${rid.ciP.toLocaleString('en-IN')}/yr)</span></div>`:''}
+        ${rid.total>0?`<div style="margin-top:8px;background:#e8f5e9;border:1.5px solid #66bb6a;border-radius:6px;padding:8px;text-align:center"><span style="font-size:.7rem;color:#555">TOTAL YEARLY PREMIUM (riders ke saath)</span><div style="font-weight:800;color:#1b5e20;font-size:1.05rem">₹${totalPremY.toLocaleString('en-IN')}</div></div>`:''}
       </div>
     </div>
     <div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:10px;font-size:.78rem;margin-bottom:10px">
@@ -3224,6 +3269,8 @@ function saveNQ() {
 
   const premY = parseFloat(document.getElementById('nq-premy').value)||0;
   const planFab = (PLAN_DB[plan] && PLAN_DB[plan].getFABRate) ? Math.round(PLAN_DB[plan].getFABRate(parseFloat(sa)||0, parseInt(document.getElementById('nq-term').value)||0) * (parseFloat(sa)||0) / 1000) : 0;
+  const nqAge = parseInt(document.getElementById('nq-age').value)||0;
+  const rid = computeRiderPremiums(nqAge, document.getElementById('nq-ab').value, document.getElementById('nq-tr').value, document.getElementById('nq-ci').value);
   const slabVal = parseInt(document.getElementById('nq-tax').value||0);
   let taxReb = 0;
   if(slabVal > 1500000) taxReb = 30; else if(slabVal > 1000000) taxReb = 20;
@@ -3253,6 +3300,10 @@ function saveNQ() {
       accident: document.getElementById('nq-ab').value||'0',
       termRider: document.getElementById('nq-tr').value||'0',
       ci: document.getElementById('nq-ci').value||'0',
+      abPrem: String(rid.abP||0),
+      trPrem: String(rid.trP||0),
+      ciPrem: String(rid.ciP||0),
+      totalPremYly: String(premY + rid.total),
       fab: String(planFab||0),
     }]
   };
@@ -3296,6 +3347,10 @@ function printNQPreview() {
 
   const dbClient = DB.clients.find(c=>String(c.id)===String(cid));
 
+  // Rider premiums (increase total annual outgo)
+  const rid = computeRiderPremiums(age, ab, tr2, ci);
+  const totalPremY = premY + rid.total;
+
   // Build a full quotation object and reuse the multi-page presentation renderer
   const q = {
     id: 'NQ'+Date.now(),
@@ -3324,6 +3379,10 @@ function printNQPreview() {
       accident: String(ab||0),
       termRider: String(tr2||0),
       ci: String(ci||0),
+      abPrem: String(rid.abP||0),
+      trPrem: String(rid.trP||0),
+      ciPrem: String(rid.ciP||0),
+      totalPremYly: String(totalPremY),
       fab: String(fabAmt||0)
     }]
   };
@@ -4069,6 +4128,21 @@ function computeAutoPremium(planNo, sa, term, age) {
   else if(sa < 500000) reb = -0.02; // small loading below ₹5L
   prem = prem * (1 - reb);
   return Math.round(prem);
+}
+
+// Rider premiums (illustrative per-1000-SA annual rates). Riders increase total premium.
+function computeRiderPremiums(age, ab, tr, ci) {
+  age = parseInt(age) || 30;
+  var abRate = 1.0; // Accident Benefit Rider: ~₹1 per 1000 SA
+  var trRate, ciRate;
+  if(age <= 30) { trRate = 1.2; ciRate = 2.5; }
+  else if(age <= 40) { trRate = 1.8; ciRate = 4.0; }
+  else if(age <= 50) { trRate = 3.0; ciRate = 7.0; }
+  else { trRate = 4.5; ciRate = 11.0; }
+  var abP = Math.round((parseFloat(ab) || 0) / 1000 * abRate);
+  var trP = Math.round((parseFloat(tr) || 0) / 1000 * trRate);
+  var ciP = Math.round((parseFloat(ci) || 0) / 1000 * ciRate);
+  return { abP: abP, trP: trP, ciP: ciP, total: abP + trP + ciP, abRate: abRate, trRate: trRate, ciRate: ciRate };
 }
 function pcOnTableChange(){var t=document.getElementById('pc-table').value;var ts=document.getElementById('pc-term');ts.innerHTML='<option value="">-- Term Choose --</option>';document.getElementById('pc-ppt').value='';document.getElementById('pc-plan-info').innerHTML='';document.getElementById('pc-result').style.display='none';if(!t||!PLAN_DB[t])return;var p=PLAN_DB[t];document.getElementById('pc-plan-info').innerHTML='<div style="background:#e3f2fd;border:1px solid #90caf9;border-radius:8px;padding:12px;margin:10px 0;font-size:.82rem"><strong>'+p.name+' (Table '+t+')</strong><br>Type: '+p.type+'<br>Entry Age: '+p.entryAge.min+'-'+p.entryAge.max+' yr | Min SA: ₹'+p.minSA.toLocaleString('en-IN')+'<br>Terms: '+p.terms.join(', ')+' yr<br>Maturity: '+p.maturityFormula+'</div>';p.terms.forEach(function(tr){var o=document.createElement('option');o.value=tr;o.textContent=tr+' yr (PPT: '+p.getPPT(tr)+' yr)';ts.appendChild(o);});pcValidateAge();}
 function pcOnTermChange(){var t=document.getElementById('pc-table').value;var term=parseInt(document.getElementById('pc-term').value);if(!t||!term||!PLAN_DB[t]){document.getElementById('pc-ppt').value='';return;}document.getElementById('pc-ppt').value=PLAN_DB[t].getPPT(term)+' years';pcCalculate();}
