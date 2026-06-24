@@ -542,13 +542,13 @@ textarea{resize:vertical;min-height:65px}
               <div class="fg" style="grid-column:span 3">
                 <label>Client Search Karo</label>
                 <div style="position:relative">
-                  <input id="nq-search" placeholder="🔍 Naam ya mobile likhein..." oninput="searchNQClient(this.value)" 
+                  <input id="nq-search" placeholder="🔍 Naam/mobile likho (naya client bhi ban sakta hai)..." oninput="searchNQClient(this.value)" 
                     style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:.88rem;outline:none"
                     autocomplete="off">
                   <div id="nq-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1.5px solid var(--pri);border-radius:7px;max-height:200px;overflow-y:auto;z-index:500;box-shadow:0 8px 24px rgba(0,0,0,.15)"></div>
                 </div>
               </div>
-              <div class="fg"><label>Client naam</label><input id="nq-name" placeholder="Auto fill hoga"></div>
+              <div class="fg"><label>Client naam</label><input id="nq-name" placeholder="Naam type karo (naya client)"></div>
               <div class="fg"><label>DOB</label><input type="date" id="nq-dob" onchange="calcNQAge(this.value)"></div>
               <div class="fg"><label>Age</label><input type="number" id="nq-age" placeholder="Auto ya manual" oninput="calcNQMaturity()"></div>
               <div class="fg"><label>Income Tax Slab (₹)</label><input type="number" id="nq-tax" placeholder="500000"></div>
@@ -1193,15 +1193,16 @@ function renderDue() {
 
   const dueQ = (document.getElementById('due-search')?.value||'').toLowerCase().trim();
   const list=DB.policies.filter(p=>{
-    if(st==='ALL'){}else if(p.status!==st)return false;
-    if(selectedModes.length && !selectedModes.includes(p.mode))return false;
-    if(!isDue(p.fup,p.mode,m,y))return false;
+    // When user searches (name/policy no.), match across ALL policies — ignore month/mode/status filters
     if(dueQ){
       const c=gClient(p.clientId);
       const nm=(c?.name||'').toLowerCase();
       const pn=(p.polno||'').toLowerCase();
-      if(!nm.includes(dueQ)&&!pn.includes(dueQ))return false;
+      return nm.includes(dueQ)||pn.includes(dueQ);
     }
+    if(st==='ALL'){}else if(p.status!==st)return false;
+    if(selectedModes.length && !selectedModes.includes(p.mode))return false;
+    if(!isDue(p.fup,p.mode,m,y))return false;
     return true;
   });
 
@@ -2489,7 +2490,7 @@ function printQuotation(id, qObj) {
       const premThisYr = yr <= ppt ? premY : 0;
       totalPremPaid += premThisYr;
       const bonusThisYr = bonusRate * sa / 1000;
-      cumBonus += (yr <= ppt ? bonusThisYr : 0);
+      cumBonus += bonusThisYr; // SRB accrues every year of the full policy term
 
       let sbAmt = 0;
       // Money back payout
@@ -3130,9 +3131,9 @@ function generateNQPreview() {
 
   if(!sa || !premY) { toast('❌ SA aur Premium daalo!'); return; }
 
-  const premH = Math.round(premY * 0.505);
-  const premQ = Math.round(premY * 0.255);
-  const premM = Math.round(premY * 0.0875);
+  const premH = Math.round(premY / 2);
+  const premQ = Math.round(premY / 4);
+  const premM = Math.round(premY / 12);
 
   document.getElementById('nq-preview').innerHTML = `
     <div style="background:linear-gradient(135deg,#003087,#1a237e);color:#fff;border-radius:8px;padding:16px;margin-bottom:12px">
@@ -3208,9 +3209,9 @@ function saveNQ() {
       sa, term: document.getElementById('nq-term').value,
       ppt: document.getElementById('nq-ppt').value,
       premYly: String(premY),
-      premHly: String(Math.round(premY*0.505)),
-      premQly: String(Math.round(premY*0.255)),
-      premMly: String(Math.round(premY*0.0875)),
+      premHly: String(Math.round(premY/2)),
+      premQly: String(Math.round(premY/4)),
+      premMly: String(Math.round(premY/12)),
       maturity: document.getElementById('nq-matamt').value,
       bonus: document.getElementById('nq-bonus').value,
       bonusRate: document.getElementById('nq-bonus').value,
@@ -3279,9 +3280,9 @@ function printNQPreview() {
       term: String(term),
       ppt: String(ppt),
       premYly: String(premY),
-      premHly: String(Math.round(premY*0.505)),
-      premQly: String(Math.round(premY*0.255)),
-      premMly: String(Math.round(premY*0.0875)),
+      premHly: String(Math.round(premY/2)),
+      premQly: String(Math.round(premY/4)),
+      premMly: String(Math.round(premY/12)),
       maturity: String(matamt),
       bonusRate: String(bonus),
       accident: String(ab||0),
@@ -3365,16 +3366,34 @@ function searchNQClient(q) {
       (c.name||'').toLowerCase().includes(q.toLowerCase()) ||
       (c.mobile||'').includes(q)
     ).slice(0, 10);
-    if(!results.length) { dd.style.display='none'; return; }
-    dd.innerHTML = results.map(c => `
+    const safeQ = q.replace(/'/g,"\\'").trim();
+    let html = results.map(c => `
       <div onclick="selectNQClient('${c.id}')" 
         style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #f0f2f5;font-size:.85rem"
         onmouseover="this.style.background='#f0f4ff'" onmouseout="this.style.background='#fff'">
         <strong>${c.prefix||''} ${c.name}</strong>
         <span style="color:var(--muted);font-size:.78rem;margin-left:8px">${c.mobile||''}</span>
       </div>`).join('');
+    // Always offer a "new client" option so quotations can be made for clients not in the list
+    html += `<div onclick="selectNewNQClient('${safeQ}')"
+        style="padding:10px 14px;cursor:pointer;font-size:.85rem;background:#e8f5e9;border-top:1px solid #a5d6a7"
+        onmouseover="this.style.background='#d6efd8'" onmouseout="this.style.background='#e8f5e9'">
+        ➕ <strong>"${safeQ}"</strong> naye client ka quotation banao
+      </div>`;
+    dd.innerHTML = html;
     dd.style.display = 'block';
   }, 150);
+}
+
+function selectNewNQClient(name) {
+  document.getElementById('nq-search').value = name;
+  document.getElementById('nq-name').value = name;
+  document.getElementById('nq-search').dataset.clientId = '';
+  document.getElementById('nq-dropdown').style.display = 'none';
+  // Let user fill DOB/age manually for the new client
+  const dobEl = document.getElementById('nq-dob');
+  if(dobEl) dobEl.value = '';
+  toast('✅ Naya client set kiya — DOB/Age aur plan details bharo');
 }
 
 function selectNQClient(cid) {
@@ -4018,7 +4037,7 @@ function computeAutoPremium(planNo, sa, term, age) {
 function pcOnTableChange(){var t=document.getElementById('pc-table').value;var ts=document.getElementById('pc-term');ts.innerHTML='<option value="">-- Term Choose --</option>';document.getElementById('pc-ppt').value='';document.getElementById('pc-plan-info').innerHTML='';document.getElementById('pc-result').style.display='none';if(!t||!PLAN_DB[t])return;var p=PLAN_DB[t];document.getElementById('pc-plan-info').innerHTML='<div style="background:#e3f2fd;border:1px solid #90caf9;border-radius:8px;padding:12px;margin:10px 0;font-size:.82rem"><strong>'+p.name+' (Table '+t+')</strong><br>Type: '+p.type+'<br>Entry Age: '+p.entryAge.min+'-'+p.entryAge.max+' yr | Min SA: ₹'+p.minSA.toLocaleString('en-IN')+'<br>Terms: '+p.terms.join(', ')+' yr<br>Maturity: '+p.maturityFormula+'</div>';p.terms.forEach(function(tr){var o=document.createElement('option');o.value=tr;o.textContent=tr+' yr (PPT: '+p.getPPT(tr)+' yr)';ts.appendChild(o);});pcValidateAge();}
 function pcOnTermChange(){var t=document.getElementById('pc-table').value;var term=parseInt(document.getElementById('pc-term').value);if(!t||!term||!PLAN_DB[t]){document.getElementById('pc-ppt').value='';return;}document.getElementById('pc-ppt').value=PLAN_DB[t].getPPT(term)+' years';pcCalculate();}
 function pcValidateAge(){var t=document.getElementById('pc-table').value;var age=parseInt(document.getElementById('pc-age').value);var w=document.getElementById('pc-age-warning');if(!t||!age||!PLAN_DB[t]){w.innerHTML='';return;}var p=PLAN_DB[t];if(age<p.entryAge.min||age>p.entryAge.max){w.innerHTML='<div style="background:#fff3e0;border:1px solid #ffe082;border-radius:6px;padding:8px;margin:8px 0;font-size:.8rem;color:#e65100">⚠️ Age '+age+' allowed range se bahar hai ('+p.entryAge.min+'-'+p.entryAge.max+')</div>';}else{w.innerHTML='';}}
-function pcCalculate(){var t=document.getElementById('pc-table').value;var term=parseInt(document.getElementById('pc-term').value);var sa=parseFloat(document.getElementById('pc-sa').value);var age=parseInt(document.getElementById('pc-age').value)||0;var prem=parseFloat(document.getElementById('pc-premium').value);var res=document.getElementById('pc-result');if(!t||!term||!sa||!PLAN_DB[t]){res.style.display='none';return;}var p=PLAN_DB[t];if(sa<p.minSA){res.style.display='none';return;}res.style.display='block';var srbRate=p.getSRBRate(sa,term);var totalSRB=srbRate?Math.round(srbRate*term*sa/1000):0;var fabRate=p.getFABRate(sa,term);var fabAmt=Math.round(fabRate*sa/1000);var matSAFactor=p.matSAFactor||1.0;var matSA=Math.round(sa*matSAFactor);var maturity=matSA+totalSRB+fabAmt;document.getElementById('pc-res-maturity').textContent='₹'+maturity.toLocaleString('en-IN');document.getElementById('pc-res-srb-rate').textContent='₹'+srbRate+'/1000 SA';document.getElementById('pc-res-srb-total').textContent='₹'+totalSRB.toLocaleString('en-IN');document.getElementById('pc-res-srb-calc').textContent=(matSAFactor!==1.0?'(110% SA ₹'+matSA.toLocaleString('en-IN')+' + ':'(')+'₹'+srbRate+' × '+term+'yr × '+(sa/1000)+')';document.getElementById('pc-res-fab-rate').textContent='₹'+fabRate+'/1000 SA';document.getElementById('pc-res-fab-amount').textContent='₹'+fabAmt.toLocaleString('en-IN');document.getElementById('pc-res-death').textContent=p.deathBenefit;var showPrem=prem>0?prem:computeAutoPremium(t,sa,term,age);if(showPrem>0){document.getElementById('pc-prem-yearly').textContent='₹'+showPrem.toLocaleString('en-IN')+(prem>0?'':' (auto)');document.getElementById('pc-prem-half').textContent='₹'+Math.round(showPrem*0.505).toLocaleString('en-IN');document.getElementById('pc-prem-quarterly').textContent='₹'+Math.round(showPrem*0.255).toLocaleString('en-IN');document.getElementById('pc-prem-monthly').textContent='₹'+Math.round(showPrem*0.0875).toLocaleString('en-IN');}else{document.getElementById('pc-prem-yearly').textContent='-';document.getElementById('pc-prem-half').textContent='-';document.getElementById('pc-prem-quarterly').textContent='-';document.getElementById('pc-prem-monthly').textContent='-';}}
+function pcCalculate(){var t=document.getElementById('pc-table').value;var term=parseInt(document.getElementById('pc-term').value);var sa=parseFloat(document.getElementById('pc-sa').value);var age=parseInt(document.getElementById('pc-age').value)||0;var prem=parseFloat(document.getElementById('pc-premium').value);var res=document.getElementById('pc-result');if(!t||!term||!sa||!PLAN_DB[t]){res.style.display='none';return;}var p=PLAN_DB[t];if(sa<p.minSA){res.style.display='none';return;}res.style.display='block';var srbRate=p.getSRBRate(sa,term);var totalSRB=srbRate?Math.round(srbRate*term*sa/1000):0;var fabRate=p.getFABRate(sa,term);var fabAmt=Math.round(fabRate*sa/1000);var matSAFactor=p.matSAFactor||1.0;var matSA=Math.round(sa*matSAFactor);var maturity=matSA+totalSRB+fabAmt;document.getElementById('pc-res-maturity').textContent='₹'+maturity.toLocaleString('en-IN');document.getElementById('pc-res-srb-rate').textContent='₹'+srbRate+'/1000 SA';document.getElementById('pc-res-srb-total').textContent='₹'+totalSRB.toLocaleString('en-IN');document.getElementById('pc-res-srb-calc').textContent=(matSAFactor!==1.0?'(110% SA ₹'+matSA.toLocaleString('en-IN')+' + ':'(')+'₹'+srbRate+' × '+term+'yr × '+(sa/1000)+')';document.getElementById('pc-res-fab-rate').textContent='₹'+fabRate+'/1000 SA';document.getElementById('pc-res-fab-amount').textContent='₹'+fabAmt.toLocaleString('en-IN');document.getElementById('pc-res-death').textContent=p.deathBenefit;var showPrem=prem>0?prem:computeAutoPremium(t,sa,term,age);if(showPrem>0){document.getElementById('pc-prem-yearly').textContent='₹'+showPrem.toLocaleString('en-IN')+(prem>0?'':' (auto)');document.getElementById('pc-prem-half').textContent='₹'+Math.round(showPrem/2).toLocaleString('en-IN');document.getElementById('pc-prem-quarterly').textContent='₹'+Math.round(showPrem/4).toLocaleString('en-IN');document.getElementById('pc-prem-monthly').textContent='₹'+Math.round(showPrem/12).toLocaleString('en-IN');}else{document.getElementById('pc-prem-yearly').textContent='-';document.getElementById('pc-prem-half').textContent='-';document.getElementById('pc-prem-quarterly').textContent='-';document.getElementById('pc-prem-monthly').textContent='-';}}
 function pcReset(){document.getElementById('pc-table').selectedIndex=0;document.getElementById('pc-name').value='';document.getElementById('pc-age').value='';document.getElementById('pc-term').innerHTML='<option value="">-- Term Choose --</option>';document.getElementById('pc-ppt').value='';document.getElementById('pc-sa').value='';document.getElementById('pc-premium').value='';document.getElementById('pc-plan-info').innerHTML='';document.getElementById('pc-age-warning').innerHTML='';document.getElementById('pc-result').style.display='none';}
 
 // ============ INIT ============
